@@ -1,0 +1,2 @@
+# droneci
+Sample drone configuration
