@@ -1,0 +1,52 @@
+branches:  
+  include: [master, develop, release-*]
+
+pipeline:
+  # restores the cache from a local volume
+  restore-cache:
+    image: drillster/drone-volume-cache
+    restore: true
+    mount: 
+      - /drone/.m2
+    volumes: 
+      - /tmp/cache:/cache
+
+  pre-build:
+    image: alpine
+    commands:
+      - mkdir -p publish/$${DRONE_BUILD_NUMBER}/artifacts
+      - cd publish
+      - echo $${DRONE_BUILD_NUMBER} > lastest
+      - cd $${DRONE_BUILD_NUMBER}
+      - touch build.info
+      - env | grep ^DRONE_ >> build.info
+
+  build:
+    image: maven:3.3.9
+    commands:
+      - mvn -Dmaven.repo.local=/drone/.m2/repository clean package
+      - cp target/*.tgz publish/$${DRONE_BUILD_NUMBER}/artifacts
+
+  # rebuild the cache in case new dependencies were
+  # downloaded during your build
+  rebuild-cache:
+    image: drillster/drone-volume-cache
+    rebuild: true
+    mount: 
+      - /drone/.m2
+    volumes:
+      - /tmp/cache:/cache
+
+  publish:
+    image: plugins/s3
+    secrets: 
+      - source: MBVDEV_AWS_ACCESS_KEY
+        target: AWS_ACCESS_KEY_ID
+      - source: MBVDEV_AWS_SECRET_KEY
+        target: AWS_SECRET_ACCESS_KEY
+    acl: public-read
+    bucket: "mbvdev"
+    region: "ap-southeast-1"
+    source: publish/**/*
+    strip_prefix: publish/
+    target: share/builds/${DRONE_REPO_NAME}/${DRONE_BRANCH}/
